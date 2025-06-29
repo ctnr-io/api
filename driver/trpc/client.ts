@@ -1,13 +1,24 @@
 import 'lib/utils.ts'
 import { createTRPCClient, createWSClient, TRPCClient, wsLink } from "@trpc/client";
 import { Router } from "./server.ts";
+import { getSupabaseClient } from "lib/supabase.ts";
 
 export const wsClient = createWSClient({
   url: Deno.env.get("CTNR_API_URL") || "https://api.ctnr.io",
-  connectionParams: () => {
-    return {
-      // token: 'your-supabase-access-token', // Replace with your actual token
-    };
+  connectionParams: async () => {
+    // try {
+    //   const supabase = getSupabaseClient();
+    //   const { data: { session } } = await supabase.auth.getSession();
+      
+    //   return {
+    //     token: session?.access_token || null,
+    //   };
+    // } catch (error) {
+    //   console.debug("Failed to get Supabase session:", error);
+    //   return {
+    //     token: null,
+    //   };
+    // }
   },
   onOpen() {
     // Handle WebSocket open event
