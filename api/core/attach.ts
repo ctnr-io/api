@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { namespace, ServerContext } from "api/context.ts";
+import { ServerContext } from "ctx/mod.ts";
 
 export const Meta = {
   aliases: {
@@ -55,7 +55,7 @@ export default (ctx: ServerContext) => async (input: Input) => {
   try {
     const { name, interactive = false, terminal = false } = input;
 
-    const tunnel = await ctx.kube.client.CoreV1.namespace(namespace).tunnelPodAttach(name, {
+    const tunnel = await ctx.kube.client.CoreV1.namespace(ctx.kube.namespace).tunnelPodAttach(name, {
       stdin: interactive,
       tty: terminal,
       stdout: true,
@@ -123,7 +123,7 @@ export default (ctx: ServerContext) => async (input: Input) => {
 
     defer.push(async () => {
       // Get pod resource
-      const podResource = await ctx.kube.client.CoreV1.namespace(namespace).getPod(name);
+      const podResource = await ctx.kube.client.CoreV1.namespace(ctx.kube.namespace).getPod(name);
       // Close the tunnel and clean up resources
       ctx.stdio.exit(podResource.status?.containerStatuses?.[0]?.state?.terminated?.exitCode || 0);
     });
@@ -156,6 +156,7 @@ export default (ctx: ServerContext) => async (input: Input) => {
     console.debug(`Stream processing completed with result:`, result);
   } catch (error) {
     console.debug(`Error in stream processing:`, error);
+    ctx.stdio.exit(1);
   } finally {
     console.debug(`Cleaning up resources...`);
     // Run cleanup functions in reverse order

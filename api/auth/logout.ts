@@ -1,11 +1,12 @@
-import { z } from "zod";
-import { ServerContext } from "api/context.ts";
+import { ClientContext } from "../../ctx/mod.ts";
 
-export const Meta = {};
-
-export const Input = z.void();
-export type Input = z.infer<typeof Input>;
-
-export default (ctx: ServerContext) => (input: Input) => {
-	ctx.auth.session = null
+export default (ctx: ClientContext) => async () => {
+  try {
+    // Clear Supabase session
+    await ctx.auth.client.signOut();
+    console.info("🔓 Logged out successfully");
+  } catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+    console.warn("❌ Error during logout:", message);
+  }
 };

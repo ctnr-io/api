@@ -1,17 +1,11 @@
-import { Session } from "@supabase/supabase-js";
-import { getSupabaseClient } from "lib/supabase.ts";
+import { z } from "zod";
+import { ClientContext } from "../../ctx/mod.ts";
+import { openBrowser, startCallbackServer } from "driver/trpc/client/terminal/auth-callback-server.ts";
 
-import { openBrowser, startCallbackServer } from "./auth-callback-server.ts";
-import { authStorage } from "./storage.ts";
-
-/**
- * Perform complete PKCE OAuth flow
- */
-export async function performOAuthFlow(): Promise<Session> {
+export default (ctx: ClientContext) => async () => {
   try {
     // Check if user is already authenticated
-    const client = getSupabaseClient({ storage: authStorage });
-    const { data: { session } } = await client.auth.getSession();
+    const { data: { session } } = await ctx.auth.client.getSession();
     if (session?.access_token && (session?.expires_at ?? 0) < Date.now()) {
       console.info(`🔑 Authenticated as ${session.user.email}.`);
       return session;
@@ -21,7 +15,7 @@ export async function performOAuthFlow(): Promise<Session> {
     // Generate PKCE parameters
     const { server, promise, url, } = startCallbackServer();
 
-    const oauth = await client.auth.signInWithOAuth({
+    const oauth = await ctx.auth.client.signInWithOAuth({
       provider: "github",
       options: {
         redirectTo: url,
@@ -55,7 +49,7 @@ export async function performOAuthFlow(): Promise<Session> {
     const { code } = await promise;
 
     // Exchange code for tokens  exchangeCodeForTokens,
-    const { data } = await client.auth.exchangeCodeForSession(code);
+    const { data } = await ctx.auth.client.exchangeCodeForSession(code);
 
     const { access_token, refresh_token } = data.session || {};
     if (!access_token) {
@@ -67,7 +61,7 @@ export async function performOAuthFlow(): Promise<Session> {
 
     // Store tokens
     // Set session in Supabase client
-    await client.auth.setSession({
+    await ctx.auth.client.setSession({
       access_token,
       refresh_token: refresh_token || "",
     });
@@ -77,31 +71,8 @@ export async function performOAuthFlow(): Promise<Session> {
 
     console.info("✅ Authentication successful!");
 
-    return (await client.auth.getSession()).data.session!
+    return (await ctx.auth.client.getSession()).data.session!
   } catch (error) {
     throw new Error(`OAuth flow failed: ${error instanceof Error ? error.message : String(error)}`);
   }
-}
-
-let performOAuthFlowPromise: Promise<Session>| null= null; 
-export function performOAuthFlowOnce(): Promise<Session> {
-  if (!performOAuthFlowPromise) {
-    performOAuthFlowPromise = performOAuthFlow();
-  }
-  return performOAuthFlowPromise;
-}
-
-/**
- * Clear stored authentication tokens (logout)
- */
-export async function logout(): Promise<void> {
-  try {
-    // Clear Supabase session
-    const supabase = getSupabaseClient({ storage: authStorage });
-    await supabase.auth.signOut();
-
-    console.info("🔓 Logged out successfully");
-  } catch (error) {
-    console.warn("Error during logout:", error);
-  }
-}
+};

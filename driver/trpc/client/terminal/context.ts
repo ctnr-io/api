@@ -1,33 +1,44 @@
-import { AuthContext, ClientContext } from "api/context.ts";
+import { ClientContext } from "../../../../ctx/mod.ts";
 import { Buffer } from "node:buffer";
 import { bypassWebSocketMessageHandler } from "lib/websocket.ts";
 import { TRPCClient } from "@trpc/client";
-import { performOAuthFlowOnce } from "./auth.ts";
 import { ServerRouter } from "../../server/router.ts";
 import { createTRPCWebSocketClient } from "../mod.ts";
+import { createClientContext } from "ctx/client/mod.ts";
 
 type ProcedureOptions = {
   authenticate: boolean;
-}
+};
 
-export type RemoteCliContext = {
+export type ClientTerminalContext = ClientContext & {
   lazy: <R>(
     procedureOptions: ProcedureOptions,
-    callback: ({ client }: {
-      client: TRPCClient<ServerRouter>;
+    callback: ({ server }: {
+      server: TRPCClient<ServerRouter>;
     }) => Promise<R>,
   ) => Promise<R>;
 };
 
-export function createRemoteCliContext(
-  opts: ClientContext,
-): RemoteCliContext {
+export async function createTrpcClientTerminalContext(
+  opts: {
+    stdio: ClientContext["stdio"];
+  },
+): Promise<ClientTerminalContext> {
+  const ctx = await createClientContext(opts);
   return {
+    ...ctx,
     // This function prevent to start websocket connection until the first call to `lazy`
     // This is useful to avoid unnecessary WebSocket connections when running commands that do not require it like --help.
     lazy: async (procedureOptions, callback) => {
+      if (!ctx.auth.session) {
+        // TODO: auto login
+        throw new Error("No active session found. Please log in first.");
+      }
       try {
-        const client = await createTRPCWebSocketClient();
+        const client = await createTRPCWebSocketClient({
+          accessToken: ctx.auth.session.access_token,
+          refreshToken: ctx.auth.session.refresh_token,
+        });
 
         opts.stdio.stdin.pipeTo(
           new WritableStream({
@@ -105,13 +116,8 @@ export function createRemoteCliContext(
           }
         })();
 
-        if (procedureOptions.authenticate) {
-          const session = await performOAuthFlowOnce();
-          await client.trpc.auth.login.mutate(session);
-        }
-
         return callback({
-          client: client.trpc,
+          server: client.trpc,
         });
       } catch (error) {
         console.debug("Error in lazy callback:", error);
